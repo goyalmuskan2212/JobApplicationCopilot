@@ -18,6 +18,7 @@ KNOWN_SKILLS = [
 # 1) STATE: the shared notebook for one run.
 class State(TypedDict):
     job_text: str               # input: the job posting
+    word_count: int             # filled by count_words
     my_skills: list[str]        # input: your skills
     required_skills: list[str]  # filled by extract_required_skills
     matched_skills: list[str]   # filled by compare_with_profile
@@ -31,6 +32,10 @@ def extract_required_skills(state: State) -> dict:
     text = state["job_text"].lower()
     found = [skill for skill in KNOWN_SKILLS if skill in text]
     return {"required_skills": found}
+
+
+def count_words(state: State) -> dict:
+    return {"word_count": len(state["job_text"].split())}
 
 
 def compare_with_profile(state: State) -> dict:
@@ -59,11 +64,13 @@ def build_report(state: State) -> dict:
 builder = StateGraph(State)
 
 builder.add_node("extract_required_skills", extract_required_skills)
+builder.add_node("count_words", count_words)
 builder.add_node("compare_with_profile", compare_with_profile)
 builder.add_node("build_report", build_report)
 
 builder.add_edge(START, "extract_required_skills")
-builder.add_edge("extract_required_skills", "compare_with_profile")
+builder.add_edge("extract_required_skills", "count_words")
+builder.add_edge("count_words", "compare_with_profile")
 builder.add_edge("compare_with_profile", "build_report")
 builder.add_edge("build_report", END)
 
