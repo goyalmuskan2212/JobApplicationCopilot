@@ -13,6 +13,8 @@ from langfuse.langchain import CallbackHandler
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
+from llm_utils import invoke_with_retry
+
 
 # ---------------------------------------------------------------
 # 1) SCHEMAS: the exact shapes we require the model to answer in.
@@ -75,9 +77,10 @@ class State(TypedDict):
 # 4) NODES. The extra `config` argument lets Langfuse follow the LLM call.
 # ---------------------------------------------------------------
 def extract_requirements(state: State, config: RunnableConfig) -> dict:
-    result = extractor.invoke(
+    result = invoke_with_retry(
+        extractor,
         [SystemMessage(content=EXTRACT_PROMPT), HumanMessage(content=state["job_text"])],
-        config=config,
+        config,
     )
     return {"requirements": result}
 
@@ -89,9 +92,10 @@ def score_fit(state: State, config: RunnableConfig) -> dict:
         + "\n\nCANDIDATE PROFILE:\n"
         + state["my_profile"]
     )
-    result = scorer.invoke(
+    result = invoke_with_retry(
+        scorer,
         [SystemMessage(content=SCORE_PROMPT), HumanMessage(content=user_text)],
-        config=config,
+        config,
     )
     # We did not put min/max rules in the schema, so we validate in code.
     if not 0 <= result.score <= 10:

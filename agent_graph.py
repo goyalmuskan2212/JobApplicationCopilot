@@ -1,6 +1,7 @@
 import os
 from typing import Annotated, TypedDict
 
+import groq
 from dotenv import load_dotenv
 
 load_dotenv()  # must run before Langfuse and Groq read their keys
@@ -27,6 +28,20 @@ SYSTEM_PROMPT = """You answer questions about a job candidate using ONLY the sea
 llm = ChatGroq(model=os.environ["GROQ_MODEL"], temperature=0)
 llm_with_tools = llm.bind_tools([search_notes])
 
+MAX_MODEL_ATTEMPTS = 3
+
+
+def call_model(messages, config):
+    """Call the model, retrying ONLY when it produces a malformed tool call."""
+    for attempt in range(1, MAX_MODEL_ATTEMPTS + 1):
+        try:
+            return llm_with_tools.invoke(messages, config=config)
+        except groq.BadRequestError as error:
+            is_bad_tool_call = "tool_use_failed" in str(error)
+            if not is_bad_tool_call or attempt == MAX_MODEL_ATTEMPTS:
+                raise  # a different error, or out of attempts: let it surface
+            print(f"  (malformed tool call from the model; retrying, attempt {attempt + 1} of {MAX_MODEL_ATTEMPTS})")
+
 
 # 1) STATE: the conversation so far. add_messages is a REDUCER: when a node
 #    returns {"messages": [msg]}, LangGraph APPENDS it instead of replacing the list.
@@ -37,9 +52,7 @@ class State(TypedDict):
 # 2) NODES
 def agent(state: State, config: RunnableConfig) -> dict:
     # The system prompt is prepended on every call, not stored in the state.
-    reply = llm_with_tools.invoke(
-        [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"], config=config
-    )
+    reply = call_model([SystemMessage(content=SYSTEM_PROMPT)] + state["messages"], config)
     return {"messages": [reply]}
 
 
